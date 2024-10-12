@@ -11,5 +11,7 @@ public interface DBService {
 
     boolean updateContent(String contentId, Request request);
 
+    boolean softDeleteContent(String contentId);
+
     boolean deleteContent(String contentId);
 }

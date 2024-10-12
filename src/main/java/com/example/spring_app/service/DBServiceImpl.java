@@ -1,10 +1,12 @@
 package com.example.spring_app.service;
 
 import java.util.Date;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_app.model.Data;
 import com.example.spring_app.model.Request;
@@ -15,66 +17,115 @@ import com.example.spring_app.util.Logger;
 @Service
 public class DBServiceImpl implements DBService {
 
-    long startTime = System.currentTimeMillis();
-
     private static final Logger LOG = Logger.getInstance();
+    private long startTime;
 
     @Autowired
     private DBRepo repo;
 
     @Override
     public Data getContent(String contentId) {
-        Data response = repo.getContent(contentId);
-        LOG.logTrace("getContent", startTime, contentId, CommonUtil.convertJsonToString(response), HttpStatus.OK);
-        return response;
+        startTime = System.currentTimeMillis();
+
+        Optional<Data> optionalData = repo.findByContentId(contentId);
+        if (optionalData.isPresent()) {
+            Data response = optionalData.get();
+            LOG.logTrace("getContent", startTime, contentId, CommonUtil.convertJsonToString(response), HttpStatus.OK);
+            return response;
+        } else {
+            LOG.logTrace("getContent", startTime, contentId, "Content not found", HttpStatus.NOT_FOUND);
+            return null;
+        }
     }
 
     @Override
     public boolean insertContent(Request request) {
-        Data data = new Data(request.getContentID(), request.getContentMessage(), false, new Date(), null);
+        startTime = System.currentTimeMillis();
+
+        Data data = new Data();
+        data.setContentId(request.getContentID());
+        data.setContentMessage(request.getContentMessage());
+        data.setIsDeleted(false);
+        data.setCreatedDate(new Date());
+        data.setUpdatedDate(null);
+
         try {
-            Integer response = repo.insertContent(data);
+            Data savedData = repo.save(data);
             LOG.logTrace("insertContent", startTime, CommonUtil.convertJsonToString(request),
-                    CommonUtil.convertJsonToString(response), HttpStatus.OK);
+                    CommonUtil.convertJsonToString(savedData), HttpStatus.OK);
             return true;
         } catch (Exception ex) {
             LOG.logException("insertContent", startTime, CommonUtil.convertJsonToString(request),
                     CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
-
             return false;
         }
     }
 
     @Override
     public boolean updateContent(String contentId, Request request) {
-        Data data = new Data(contentId, request.getContentMessage(), false, null, new Date());
+        startTime = System.currentTimeMillis();
 
-        try {
-            Integer response = repo.updateContent(data);
-            LOG.logTrace("updateContent", startTime, CommonUtil.convertJsonToString(request),
-                    CommonUtil.convertJsonToString(response), HttpStatus.OK);
-            return true;
-        } catch (Exception ex) {
-            LOG.logException("insertContent", startTime, CommonUtil.convertJsonToString(request),
-                    CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
+        Optional<Data> optionalData = repo.findByContentId(contentId);
+        if (optionalData.isPresent()) {
+            Data existingData = optionalData.get();
+            existingData.setContentMessage(request.getContentMessage());
+            existingData.setUpdatedDate(new Date());
+
+            try {
+                Data updatedData = repo.save(existingData);
+                LOG.logTrace("updateContent", startTime, CommonUtil.convertJsonToString(request),
+                        CommonUtil.convertJsonToString(updatedData), HttpStatus.OK);
+                return true;
+            } catch (Exception ex) {
+                LOG.logException("updateContent", startTime, CommonUtil.convertJsonToString(request),
+                        CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
+                return false;
+            }
+        } else {
+            LOG.logTrace("updateContent", startTime, contentId, "Content not found", HttpStatus.NOT_FOUND);
             return false;
         }
     }
 
     @Override
-    public boolean deleteContent(String contentId) {
-        Data data = new Data(contentId, null, true, null, null);
+    public boolean softDeleteContent(String contentId) {
+        startTime = System.currentTimeMillis();
 
-        try {
-            Integer response = repo.deleteContent(data);
-            LOG.logTrace("deleteContent", startTime, contentId, CommonUtil.convertJsonToString(response),
-                    HttpStatus.OK);
-            return true;
-        } catch (Exception ex) {
-            LOG.logException("insertContent", startTime, contentId,
-                    CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
+        Optional<Data> optionalData = repo.findByContentId(contentId);
+        if (optionalData.isPresent()) {
+            Data existingData = optionalData.get();
+            existingData.setIsDeleted(true);
+            existingData.setUpdatedDate(new Date());
+
+            try {
+                Data updatedData = repo.save(existingData);
+                LOG.logTrace("softDeleteContent", startTime, CommonUtil.convertJsonToString(contentId),
+                        CommonUtil.convertJsonToString(updatedData), HttpStatus.OK);
+                return true;
+            } catch (Exception ex) {
+                LOG.logException("softDeleteContent", startTime, CommonUtil.convertJsonToString(contentId),
+                        CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
+                return false;
+            }
+        } else {
+            LOG.logTrace("updateContent", startTime, contentId, "Content not found", HttpStatus.NOT_FOUND);
             return false;
         }
     }
 
+    @Override
+    @Transactional
+    public boolean deleteContent(String contentId) {
+        startTime = System.currentTimeMillis();
+
+        try {
+            repo.deleteByContentId(contentId);
+            LOG.logTrace("deleteContent", startTime, contentId, "Content deleted", HttpStatus.OK);
+            return true;
+        } catch (Exception ex) {
+            LOG.logException("deleteContent", startTime, contentId,
+                    CommonUtil.convertJsonToString(ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR, ex);
+            return false;
+        }
+    }
 }
